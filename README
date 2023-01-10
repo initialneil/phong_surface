@@ -1,0 +1,6 @@
+# Phong Surface with Python
+- unofficial implementation of Phong Surface
+- https://arxiv.org/pdf/2007.04940.pdf
+- solve for barycentric update with pytorch
+- update correspondence { p, v, w } by walking on triangle mesh
+

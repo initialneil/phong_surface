@@ -1,4 +1,4 @@
-# Phong Surface with python
+# Phong Surface with Python
 # github: 
 # https://github.com/initialneil
 # reference: 
