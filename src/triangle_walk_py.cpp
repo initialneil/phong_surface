@@ -14,7 +14,7 @@ namespace py = pybind11;
 class Triwalk
 {
 public:
-    Triwalk(Eigen::MatrixXi& F) 
+    Triwalk(const Eigen::MatrixXi& F) 
     {
         if (F.rows() == 0) {
             throw std::runtime_error("[ERROR] F is empty");
@@ -29,6 +29,52 @@ public:
     }
 
     ~Triwalk() {}
+
+    void operator()()
+    {
+        printf("[Triwalk]\n");
+    }
+
+    /* update surface points with triangle walk
+    *  - { F, spt_vw }: index of triagnles and the barycentric coords within
+    *  - spt_delta: update of barycentric coords
+    */
+    std::tuple<Eigen::VectorXi,Eigen::MatrixXd>
+    updateSurfacePoints(Eigen::VectorXi& spt_fidx, Eigen::MatrixXd& spt_vw, 
+        Eigen::MatrixXd& spt_delta)
+    {
+        // m_triwalk.callback_walking_spt() = [&](prometheus::TriangleWalk::SurfacePoint spt, Eigen::Vector3f shift) 
+        // {
+		// 	printf("[F = %d] bary = (%.4f, %.4f), shift = (%.4f, %.4f)\n", 
+        //         spt.f_idx, spt.bary[0], spt.bary[1], shift[0], shift[1]
+        //     );
+        // };
+
+        for (int i = 0; i < spt_fidx.size(); ++i) {
+            try {
+                prometheus::TriangleWalk::SurfacePoint p_spt;
+                p_spt.f_idx = spt_fidx[i];
+                p_spt.bary << spt_vw(i, 0), spt_vw(i, 1), 1.0 - spt_vw(i, 0) - spt_vw(i, 1);
+                Eigen::Vector3f shift;
+                shift << spt_delta(i, 0), spt_delta(i, 1), 0.0 - spt_delta(i, 0) - spt_delta(i, 1);
+
+                // std::cout << "[updateSurfacePoints][" << i << "] f_idx = "
+                //     << spt_fidx[i] << ", bary = " << spt_vw(i, 0) << ", " << spt_vw(i, 0) << std::endl;
+                prometheus::TriangleWalk::SurfacePoint q_spt = m_triwalk.walkSurfacePoint(p_spt, shift);
+                spt_fidx[i] = q_spt.f_idx;
+                spt_vw(i, 0) = q_spt.bary[0];
+                spt_vw(i, 1) = q_spt.bary[1];
+            }
+            catch (const char* msg) {
+                std::cerr << "[updateSurfacePoints][ERROR] crash on [" << i << "] f_idx = "
+                    << spt_fidx[i] << ", bary = " << spt_vw(i, 0) << ", " << spt_vw(i, 0) << std::endl;
+                std::cerr << "[updateSurfacePoints][ERROR] " << msg << std::endl;
+            }
+            // printf("[updateSurfacePoints] %d, (%.4f, %.4f)\n", q_spt.f_idx, q_spt.bary[0], q_spt.bary[1]);
+        }
+
+        return std::make_tuple(std::move(spt_fidx), std::move(spt_vw));
+    }
 
 private:
     prometheus::TriangleWalk m_triwalk;
@@ -53,9 +99,10 @@ PYBIND11_MODULE(triwalk, m) {
     // verbose
     m.def("add", [](int i, int j) { return i + j; });
 
-
+    // Triwalk
     py::class_<Triwalk>(m, "Triwalk")
-    .def(py::init<Eigen::MatrixXi&>());
-    // .def("__call__", &Triwalk::operator());
+    .def(py::init<Eigen::MatrixXi&>())
+    .def("updateSurfacePoints", &Triwalk::updateSurfacePoints)
+    .def("__call__", &Triwalk::operator());
 
 }

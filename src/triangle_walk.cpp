@@ -65,7 +65,7 @@ namespace prometheus
 				t12, intersect);
 
 			// crossing and not on the start
-			if (t12[1] > 1e-5 && t12[1] <= 1.0) {
+			if (t12[0] >= 0.0 && t12[0] <= 1.0 && t12[1] > 1e-5 && t12[1] <= 1.0) {
 				return j;
 			}
 		}
@@ -264,7 +264,7 @@ namespace prometheus
 		Eigen::Vector3f q_bary = spt.bary + shift;
 		if (isBaryInside(q_bary)) {
 			spt.bary = q_bary;
-			signalWalkingPoint(spt);
+			signalWalkingPoint(spt, shift);
 			return  spt;
 		}
 
@@ -276,7 +276,7 @@ namespace prometheus
 				// restart from a triangle point
 				spt.bary << 0.5, 0.5, 0;
 				shift = q_bary - spt.bary;
-				signalWalkingPoint(spt);
+				signalWalkingPoint(spt, shift);
 				return walkSurfacePoint(spt, shift);
 			}
 		}
@@ -284,14 +284,14 @@ namespace prometheus
 		// find crossing edge
 		int cross_edge_idx = findCrossingEdge(spt.bary, q_bary);
 		if (cross_edge_idx != -1) {
-			signalWalkingPoint(spt);
+			signalWalkingPoint(spt, shift);
 			return walkCrossEdge(spt, shift, cross_edge_idx);
 		}
 
 		// check if starting point is on edge
 		int on_edge_idx = findOnEdgeIndex(spt.bary);
 		if (on_edge_idx != -1) {
-			signalWalkingPoint(spt);
+			signalWalkingPoint(spt, shift);
 			return walkCrossEdge(spt, shift, on_edge_idx);
 		}
 
@@ -324,7 +324,7 @@ namespace prometheus
 		SurfacePoint spt_inter = spt;
 		spt_inter.bary = intersect;
 		Eigen::Vector3f remain_shift = q_bary - intersect;
-		signalWalkingPoint(spt_inter);
+		signalWalkingPoint(spt_inter, remain_shift);
 
 		// the reordered cur_tri is aligned with reordered nbr_tri
 		ReorderTriangle cur_tri = reorderTriangle(spt_inter, edge_idx);
@@ -365,10 +365,10 @@ namespace prometheus
 	}
 
 	// verbose: signal intermediate walking point
-	void TriangleWalk::signalWalkingPoint(SurfacePoint spt)
+	void TriangleWalk::signalWalkingPoint(SurfacePoint spt, Eigen::Vector3f shift)
 	{
 		if (m_callback_walking_spt) {
-			m_callback_walking_spt(spt);
+			m_callback_walking_spt(spt, shift);
 		}
 	}
 

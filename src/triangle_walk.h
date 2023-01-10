@@ -67,7 +67,7 @@ namespace prometheus
 		WalkingPoint walkToNeighbor(WalkingPoint wpt, ReorderTriangle nbr_tri);
 
 		// helper functions
-		void signalWalkingPoint(SurfacePoint spt);
+		void signalWalkingPoint(SurfacePoint spt, Eigen::Vector3f shift);
 		auto& callback_walking_spt() { return m_callback_walking_spt; }
 
 	private:
@@ -83,7 +83,7 @@ namespace prometheus
 		} m_buffer;
 
 		// verbose callback
-		std::function<void(SurfacePoint spt)> m_callback_walking_spt = nullptr;
+		std::function<void(SurfacePoint, Eigen::Vector3f)> m_callback_walking_spt = nullptr;
 	};
 
 }

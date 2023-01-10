@@ -17,7 +17,7 @@ __version__ = "0.1.0"
 SETUP_DIRECTORY = Path(__file__).resolve().parent
 
 # setup Eigen
-# https://github.com/tohtsky/irspack/blob/main/setup.py
+# reference: https://github.com/tohtsky/irspack/blob/main/setup.py
 class get_eigen_include(object):
     EIGEN3_URL = "https://gitlab.com/libeigen/eigen/-/archive/3.3.7/eigen-3.3.7.zip"
     LIB_DIRNAME = "3rdparty"
