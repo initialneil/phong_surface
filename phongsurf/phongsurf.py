@@ -59,7 +59,7 @@ class PhongSurface():
         if self.FN is not None:
             self.source_FN = torch.from_numpy(self.FN).to(dtype=torch.long)
 
-        self.lambda_N = 0.01
+        self.lambda_N = 0.001
         self.outer_loop = 4
         self.inner_loop = 50
 
@@ -153,7 +153,7 @@ class PhongSurface():
 
             if query_N is None:
                 corres_V = self.retrieve_vertices(corres_fidx, corres_vw + x)
-                loss = F.l1_loss(corres_V, query_V)
+                loss = torch.sqrt(F.mse_loss(corres_V, query_V))
             else:
                 corres_V = self.retrieve_vertices(corres_fidx, corres_vw + x)
                 corres_N = self.retrieve_normals(corres_fidx, corres_vw + x)
