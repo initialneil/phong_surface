@@ -83,20 +83,22 @@ namespace prometheus
 		return -1;
 	}
 
-	static TriangleWalk::ReorderTriangle reorderTriangle(TriangleWalk::SurfacePoint spt, int edge_i)
-	{
-		TriangleWalk::ReorderTriangle tri;
-		tri.f_idx = spt.f_idx;
-		tri.order_idxs << edge_i, (edge_i + 1) % 3, (edge_i + 2) % 3;
-		return tri;
-	}
-
 	static Eigen::Vector3f reorderBarycentric(Eigen::Vector3f bary, int edge_i)
 	{
 		Eigen::Vector3f reorder_bary(
 			bary[edge_i], bary[(edge_i + 1) % 3], bary[(edge_i + 2) % 3]
 		);
 		return reorder_bary;
+	}
+
+	// reset bary value to zero
+	static void resetBaryToZero(Eigen::Vector3f& bary, int idx)
+	{
+		float reset_val = bary[idx];
+		bary[idx] = 0;
+		bary[(idx + 1) % 3] += reset_val / 2.f;
+		bary[(idx + 1) % 3] = fminf(fmaxf(0.f, bary[(idx + 1) % 3]), 1.f);
+		bary[(idx + 2) % 3] = 1.f - bary[(idx + 1) % 3];
 	}
 
 	// resolve numerical issue of edge point
@@ -111,101 +113,31 @@ namespace prometheus
 			}
 		}
 
-		for (int i = 0; i < 3; ++i) {
-			if (i == idx) {
-				bary[i] = 0;
-			}
-			else {
-				bary[i] += min_val / 2;
+		resetBaryToZero(bary, idx);
+	}
+
+	// reset starting point to inside triangle
+	static void resetBaryToInside(Eigen::Vector3f& bary)
+	{
+		while (!isBaryInside(bary)) {
+			for (int i = 0; i < 3; ++i) {
+				if (bary[i] < 0.f)
+					resetBaryToZero(bary, i);
 			}
 		}
 	}
 
-	///////////////////////////////////// reorder /////////////////////////////////////
-
-	void TriangleWalk::WalkingPoint::finalize(SurfacePoint& spt, Eigen::Vector3f& shift)
+	///////////////////////////////////// edge neighbor table /////////////////////////////////////
+	static std::vector<std::array<Eigen::Vector2i, 3>> initTriangleNeighbor(const Eigen::MatrixXi& F)
 	{
-		Eigen::Vector3f p;
-		p[0] = this->intersect_ab[0];
-		p[1] = this->intersect_ab[1];
-		p[2] = 1.0f - p[0] - p[1];
-
-		Eigen::Vector3f q;
-		q[0] = p[0] + this->shift_ab[0];
-		q[1] = p[1] + this->shift_ab[1];
-		q[2] = 1.0f - q[0] - q[1];
-
-		Eigen::Vector3f _shift = q - p;
-
-		spt.f_idx = this->triangle.f_idx;
-		for (int j = 0; j < 3; ++j) {
-			spt.bary[this->triangle.order_idxs[j]] = p[j];
-			shift[this->triangle.order_idxs[j]] = _shift[j];
-		}
-	}
-
-	///////////////////////////////////// walk /////////////////////////////////////
-	TriangleWalk::TriangleWalk()
-	{}
-
-	TriangleWalk::~TriangleWalk()
-	{}
-
-	// init mesh
-	void TriangleWalk::initTriangleMesh(const Eigen::MatrixXi& F)
-	{
-		m_buffer.F = F;
-		initTriangleNeighborV2(F);
-	}
-
-	void TriangleWalk::initTriangleNeighborV1(const Eigen::MatrixXi& F)
-	{
-		m_buffer.nbr_table.resize(F.rows());
+		std::vector<std::array<Eigen::Vector2i, 3>> nbr_table;
 		if (F.rows() == 0)
-			return;
+			return nbr_table;
 
-		printf("[TriangleWalk] init triangle mesh ...");
-#pragma omp parallel for num_threads(8)
-		for (int i0 = 0; i0 < F.rows() - 1; ++i0) {
-			for (int j0 = 0; j0 < 3; ++j0) {
-				// edge vert
-				int cur_idx0 = F(i0, j0);
-				int cur_idx1 = F(i0, (j0 + 1) % 3);
-
-				// triangle shifted order for edge
-				TriangleWalk::ReorderTriangle cur_tri;
-				cur_tri.f_idx = i0;
-				cur_tri.order_idxs << j0, (j0 + 1) % 3, (j0 + 2) % 3;
-
-				// search for edge idx1-idx0 on other triangles
-				for (int i1 = i0 + 1; i1 < F.rows(); ++i1) {
-					for (int j1 = 0; j1 < 3; ++j1) {
-						// edge vert
-						int other_idx0 = F(i1, j1);
-						int other_idx1 = F(i1, (j1 + 1) % 3);
-
-						if (cur_idx1 == other_idx0 && cur_idx0 == other_idx1) {
-							// triangle shifted order for edge
-							TriangleWalk::ReorderTriangle other_tri;
-							other_tri.f_idx = i1;
-							other_tri.order_idxs << j1, (j1 + 1) % 3, (j1 + 2) % 3;
-
-							// set mutual neighbor
-							m_buffer.nbr_table[i0][j0] = other_tri;
-							m_buffer.nbr_table[i1][j1] = cur_tri;
-						}
-					}
-				}
-			}
-		}
-		printf("[done]\n");
-	}
-
-	void TriangleWalk::initTriangleNeighborV2(const Eigen::MatrixXi& F)
-	{
-		m_buffer.nbr_table.resize(F.rows());
-		if (F.rows() == 0)
-			return;
+		nbr_table.resize(F.rows());
+		for (int i = 0; i < nbr_table.size(); ++i)
+			for (int j = 0; j < nbr_table[i].size(); ++j)
+				nbr_table[i][j][0] = -1;
 
 		// build edge table
 		printf("[TriangleWalk] init edge table ...");
@@ -232,9 +164,9 @@ namespace prometheus
 				int cur_idx1 = F(i0, (j0 + 1) % 3);
 
 				// triangle shifted order for edge
-				TriangleWalk::ReorderTriangle cur_tri;
-				cur_tri.f_idx = i0;
-				cur_tri.order_idxs << j0, (j0 + 1) % 3, (j0 + 2) % 3;
+				Eigen::Vector2i cur_fi;
+				cur_fi[0] = i0;
+				cur_fi[1] = j0;
 
 				// neighbor edge key
 				string nbr_key = to_string(cur_idx1) + "-" + to_string(cur_idx0);
@@ -244,17 +176,56 @@ namespace prometheus
 					int j1 = nbr_edge[1];
 
 					// triangle shifted order for edge
-					TriangleWalk::ReorderTriangle other_tri;
-					other_tri.f_idx = i1;
-					other_tri.order_idxs << j1, (j1 + 1) % 3, (j1 + 2) % 3;
+					Eigen::Vector2i other_fi;
+					other_fi[0] = i1;
+					other_fi[1] = j1;
 
 					// set mutual neighbor
-					m_buffer.nbr_table[i0][j0] = other_tri;
-					m_buffer.nbr_table[i1][j1] = cur_tri;
+					nbr_table[i0][j0] = other_fi;
+					nbr_table[i1][j1] = cur_fi;
 				}
 			}
 		}
 		printf("[done]\n");
+
+		return nbr_table;
+	}
+
+	///////////////////////////////////// reorder /////////////////////////////////////
+	void TriangleWalk::WalkingPoint::finalize(SurfacePoint& spt, Eigen::Vector3f& shift)
+	{
+		Eigen::Vector3f p;
+		p[0] = this->intersect_ab[0];
+		p[1] = this->intersect_ab[1];
+		p[2] = 1.0f - p[0] - p[1];
+
+		Eigen::Vector3f q;
+		q[0] = p[0] + this->shift_ab[0];
+		q[1] = p[1] + this->shift_ab[1];
+		q[2] = 1.0f - q[0] - q[1];
+
+		Eigen::Vector3f _shift = q - p;
+
+		spt.f_idx = this->edge_fi[0];
+		int edge_i = this->edge_fi[1];
+		for (int j = 0; j < 3; ++j) {
+			spt.bary[(edge_i + j) % 3] = p[j];
+			shift[(edge_i + j) % 3] = _shift[j];
+		}
+	}
+
+	///////////////////////////////////// walk /////////////////////////////////////
+	TriangleWalk::TriangleWalk()
+	{}
+
+	TriangleWalk::~TriangleWalk()
+	{}
+
+	// init mesh
+	void TriangleWalk::initTriangleMesh(const Eigen::MatrixXi& F)
+	{
+		m_buffer.F = F;
+		m_buffer.nbr_table = initTriangleNeighbor(F);
 	}
 
 	// walk on triangle mesh
@@ -273,8 +244,8 @@ namespace prometheus
 			// check if starting point is on edge
 			int edge_idx = findOnEdgeIndex(spt.bary);
 			if (edge_idx == -1) {
-				// restart from a triangle point
-				spt.bary << 0.5, 0.5, 0;
+				// reset starting point
+				resetBaryToInside(spt.bary);
 				shift = q_bary - spt.bary;
 				signalWalkingPoint(spt, shift);
 				return walkSurfacePoint(spt, shift);
@@ -312,10 +283,10 @@ namespace prometheus
 			t12, intersect);
 
 		// check neighbor exist
-		ReorderTriangle nbr_tri = m_buffer.nbr_table[spt.f_idx][edge_idx];
+		Eigen::Vector2i nbr_fi = m_buffer.nbr_table[spt.f_idx][edge_idx];
 
 		// no neighbor, stop on edge intersection
-		if (nbr_tri.f_idx == -1) {
+		if (nbr_fi[0] == -1) {
 			spt.bary = intersect;
 			return spt;
 		}
@@ -327,13 +298,13 @@ namespace prometheus
 		signalWalkingPoint(spt_inter, remain_shift);
 
 		// the reordered cur_tri is aligned with reordered nbr_tri
-		ReorderTriangle cur_tri = reorderTriangle(spt_inter, edge_idx);
+		Eigen::Vector2i cur_edge = Eigen::Vector2i(spt_inter.f_idx, edge_idx);
 		WalkingPoint cur_point;
-		cur_point.triangle = cur_tri;
+		cur_point.edge_fi = cur_edge;
 		cur_point.intersect_ab = readAB(reorderBarycentric(intersect, edge_idx));
 		cur_point.shift_ab = readAB(reorderBarycentric(remain_shift, edge_idx));
 
-		WalkingPoint nbr_point = walkToNeighbor(cur_point, nbr_tri);
+		WalkingPoint nbr_point = walkToNeighbor(cur_point, nbr_fi);
 
 		SurfacePoint nbr_spt;
 		Eigen::Vector3f nbr_shift;
@@ -345,11 +316,11 @@ namespace prometheus
 		return walkSurfacePoint(nbr_spt, nbr_shift);
 	}
 
-	TriangleWalk::WalkingPoint TriangleWalk::walkToNeighbor(WalkingPoint wpt, ReorderTriangle nbr_tri)
+	TriangleWalk::WalkingPoint TriangleWalk::walkToNeighbor(WalkingPoint wpt, Eigen::Vector2i nbr_edge)
 	{
 		// current walking point transfer to neighbor triangle
 		WalkingPoint nbr_point;
-		nbr_point.triangle = nbr_tri;
+		nbr_point.edge_fi = nbr_edge;
 
 		/* current bary of AB, transfer to BA of neighbor
 		*  B A' - C'

@@ -5,7 +5,7 @@
 *  Contributor(s): Neil Z. Shao.
 */
 #pragma once
-#include <pybind11/eigen.h>
+#include <Eigen/Eigen>
 
 namespace prometheus
 {
@@ -30,12 +30,6 @@ namespace prometheus
 		*    b = coordinate along CB axis
 		*    c = 1 - a - b
 		*/
-		struct ReorderTriangle
-		{
-			int f_idx = -1;
-			Eigen::Vector3i order_idxs;
-		};
-
 		// point on mesh by indexed barycentric
 		struct SurfacePoint
 		{
@@ -46,7 +40,7 @@ namespace prometheus
 		// walking point
 		struct WalkingPoint
 		{
-			ReorderTriangle triangle;
+			Eigen::Vector2i edge_fi;
 			Eigen::Vector2f intersect_ab;
 			Eigen::Vector2f shift_ab;
 
@@ -58,15 +52,14 @@ namespace prometheus
 
 		// init mesh
 		void initTriangleMesh(const Eigen::MatrixXi& F);
-		void initTriangleNeighborV1(const Eigen::MatrixXi& F);
-		void initTriangleNeighborV2(const Eigen::MatrixXi& F);
 
 		// walk on triangle mesh
 		SurfacePoint walkSurfacePoint(SurfacePoint spt, Eigen::Vector3f shift);
 		SurfacePoint walkCrossEdge(SurfacePoint spt, Eigen::Vector3f shift, int edge_idx);
-		WalkingPoint walkToNeighbor(WalkingPoint wpt, ReorderTriangle nbr_tri);
+		WalkingPoint walkToNeighbor(WalkingPoint wpt, Eigen::Vector2i nbr_edge);
 
 		// helper functions
+		auto& nbr_table() { return m_buffer.nbr_table; }
 		void signalWalkingPoint(SurfacePoint spt, Eigen::Vector3f shift);
 		auto& callback_walking_spt() { return m_callback_walking_spt; }
 
@@ -79,7 +72,7 @@ namespace prometheus
 			// triangle neighbor table
 			// every triangle has 3 edges
 			// every edge points to another triangle (with shifted vertex order)
-			std::vector<std::array<ReorderTriangle, 3>> nbr_table;
+			std::vector<std::array<Eigen::Vector2i, 3>> nbr_table;
 		} m_buffer;
 
 		// verbose callback

@@ -1,6 +1,10 @@
 #include <iostream>
 #include <pybind11/pybind11.h>
 #include <pybind11/numpy.h>
+
+// for eigen support:
+// must include <pybind11/eigen.h> before <Eigen/Eigen>
+#include <pybind11/eigen.h>
 #include "triangle_walk.cpp"
 
 #define STRINGIFY(x) #x
@@ -25,7 +29,6 @@ public:
 
         printf("[Triwalk] init mesh with F(%d, %d)\n", F.rows(), F.cols());
         m_triwalk.initTriangleMesh(F);
-
     }
 
     ~Triwalk() {}
@@ -101,7 +104,7 @@ PYBIND11_MODULE(triwalk, m) {
 
     // Triwalk
     py::class_<Triwalk>(m, "Triwalk")
-    .def(py::init<Eigen::MatrixXi&>())
+    .def(py::init<const Eigen::MatrixXi&>())
     .def("updateSurfacePoints", &Triwalk::updateSurfacePoints)
     .def("__call__", &Triwalk::operator());
 
