@@ -10,6 +10,8 @@
 #define STRINGIFY(x) #x
 #define MACRO_STRINGIFY(x) STRINGIFY(x)
 
+// #define DEBUG_TRI_INNER
+
 namespace py = pybind11;
 
 /* Triwalk to walk on triangle mesh
@@ -43,15 +45,19 @@ public:
     *  - spt_delta: update of barycentric coords
     */
     std::tuple<Eigen::VectorXi,Eigen::MatrixXd>
-    updateSurfacePoints(Eigen::VectorXi& spt_fidx, Eigen::MatrixXd& spt_vw, 
-        Eigen::MatrixXd& spt_delta)
+    updateSurfacePointsImpl(Eigen::VectorXi& spt_fidx, Eigen::MatrixXd& spt_vw, 
+        Eigen::MatrixXd& spt_delta, bool verbose)
     {
-        // m_triwalk.callback_walking_spt() = [&](prometheus::TriangleWalk::SurfacePoint spt, Eigen::Vector3f shift) 
-        // {
-		// 	printf("[F = %d] bary = (%.4f, %.4f), shift = (%.4f, %.4f)\n", 
-        //         spt.f_idx, spt.bary[0], spt.bary[1], shift[0], shift[1]
-        //     );
-        // };
+#ifdef DEBUG_TRI_INNER
+        if (verbose) {
+            m_triwalk.callback_walking_spt() = [&](prometheus::TriangleWalk::SurfacePoint spt, Eigen::Vector3f shift) 
+            {
+                printf("[F = %d] bary = (%.4f, %.4f), shift = (%.4f, %.4f)\n", 
+                    spt.f_idx, spt.bary[0], spt.bary[1], shift[0], shift[1]
+                );
+            };
+        }
+#endif
 
         for (int i = 0; i < spt_fidx.size(); ++i) {
             try {
@@ -61,22 +67,37 @@ public:
                 Eigen::Vector3f shift;
                 shift << spt_delta(i, 0), spt_delta(i, 1), 0.0 - spt_delta(i, 0) - spt_delta(i, 1);
 
-                // std::cout << "[updateSurfacePoints][" << i << "] f_idx = "
-                //     << spt_fidx[i] << ", bary = " << spt_vw(i, 0) << ", " << spt_vw(i, 0) << std::endl;
+                if (verbose) {
+                    printf("[updateSurfacePoints][%d] f_idx = %d, bary = (%f, %f, %f)\n", i, spt_fidx[i], 
+                        p_spt.bary[0], p_spt.bary[1], p_spt.bary[2]);
+                    printf("[updateSurfacePoints]     shift = (%f, %f, %f)\n", shift[0], shift[1], shift[2]);
+                }
+
                 prometheus::TriangleWalk::SurfacePoint q_spt = m_triwalk.walkSurfacePoint(p_spt, shift);
                 spt_fidx[i] = q_spt.f_idx;
                 spt_vw(i, 0) = q_spt.bary[0];
                 spt_vw(i, 1) = q_spt.bary[1];
+
+                if (verbose) {
+                    printf("[updateSurfacePoints]     => %d, (%f, %f, %f)\n", q_spt.f_idx, 
+                        q_spt.bary[0], q_spt.bary[1], q_spt.bary[2]);
+                }
             }
             catch (const char* msg) {
                 std::cerr << "[updateSurfacePoints][ERROR] crash on [" << i << "] f_idx = "
                     << spt_fidx[i] << ", bary = " << spt_vw(i, 0) << ", " << spt_vw(i, 0) << std::endl;
                 std::cerr << "[updateSurfacePoints][ERROR] " << msg << std::endl;
             }
-            // printf("[updateSurfacePoints] %d, (%.4f, %.4f)\n", q_spt.f_idx, q_spt.bary[0], q_spt.bary[1]);
         }
 
         return std::make_tuple(std::move(spt_fidx), std::move(spt_vw));
+    }
+
+    std::tuple<Eigen::VectorXi,Eigen::MatrixXd>
+    updateSurfacePoints(Eigen::VectorXi& spt_fidx, Eigen::MatrixXd& spt_vw, 
+        Eigen::MatrixXd& spt_delta)
+    {
+        return updateSurfacePointsImpl(spt_fidx, spt_vw, spt_delta, false);
     }
 
 private:
@@ -106,6 +127,7 @@ PYBIND11_MODULE(triwalk, m) {
     py::class_<Triwalk>(m, "Triwalk")
     .def(py::init<const Eigen::MatrixXi&>())
     .def("updateSurfacePoints", &Triwalk::updateSurfacePoints)
+    .def("updateSurfacePointsImpl", &Triwalk::updateSurfacePointsImpl)
     .def("__call__", &Triwalk::operator());
 
 }

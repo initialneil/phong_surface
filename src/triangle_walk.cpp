@@ -16,7 +16,7 @@ namespace prometheus
 		return (map.find(key) != map.end());
 	}
 
-	static bool isBaryInside(Eigen::Vector3f bary, float tol = 1e-5)
+	static bool isBaryInside(const Eigen::Vector3f& bary, float tol = 1e-3)
 	{
 		if (bary[0] >= -tol && bary[0] <= 1 + tol &&
 			bary[1] >= -tol && bary[1] <= 1 + tol &&
@@ -27,7 +27,8 @@ namespace prometheus
 
 	// https://math.stackexchange.com/a/3996095
 	// line p1-p2 intersect with line p3-p4
-	static void calcLineIntersectBarycentric(Eigen::Vector3f p1, Eigen::Vector3f p2, Eigen::Vector3f p3, Eigen::Vector3f p4,
+	static void calcLineIntersectBarycentric(const Eigen::Vector3f& p1, const Eigen::Vector3f& p2, 
+		const Eigen::Vector3f& p3, const Eigen::Vector3f& p4,
 		Eigen::Vector2f& t12, Eigen::Vector3f& intersect)
 	{
 		float u1 = p1[0], v1 = p1[1], w1 = p1[2];
@@ -46,12 +47,12 @@ namespace prometheus
 		intersect[2] = w1 + t12[0] * (w2 - w1);
 	}
 
-	static Eigen::Vector2f readAB(Eigen::Vector3f abc)
+	static Eigen::Vector2f readAB(const Eigen::Vector3f& abc)
 	{
 		return Eigen::Vector2f(abc[0], abc[1]);
 	}
 
-	static int findCrossingEdge(Eigen::Vector3f p_bary, Eigen::Vector3f q_bary)
+	static int findCrossingEdge(const Eigen::Vector3f& p_bary, const Eigen::Vector3f& q_bary)
 	{
 		// find intersect edge
 		for (int j = 0; j < 3; ++j) {
@@ -73,17 +74,23 @@ namespace prometheus
 		return -1;
 	}
 
-	static int findOnEdgeIndex(Eigen::Vector3f p_bary)
+	/* Normally edge if indexed by the opposite vertex (as in libigl).
+	*  For example (0.5, 0.5, 0) is on C's opposite edge A-B, which is edge 2.
+	*  In our implementation, we use the starting point's index as edge index.
+	*  So the normal edge#2, becomes edge#0 here.
+	*/
+	static int findOnEdgeIndex(const Eigen::Vector3f& p_bary)
 	{
 		for (int j = 0; j < 3; ++j) {
 			if (fabsf(p_bary[j]) < 1e-5)
-				return j;
+				// on the opposite edge
+				return (j + 1) % 3;
 		}
 
 		return -1;
 	}
 
-	static Eigen::Vector3f reorderBarycentric(Eigen::Vector3f bary, int edge_i)
+	static Eigen::Vector3f reorderBarycentric(const Eigen::Vector3f& bary, int edge_i)
 	{
 		Eigen::Vector3f reorder_bary(
 			bary[edge_i], bary[(edge_i + 1) % 3], bary[(edge_i + 2) % 3]
@@ -119,7 +126,7 @@ namespace prometheus
 	// reset starting point to inside triangle
 	static void resetBaryToInside(Eigen::Vector3f& bary)
 	{
-		while (!isBaryInside(bary)) {
+		while (!isBaryInside(bary, 0.0)) {
 			for (int i = 0; i < 3; ++i) {
 				if (bary[i] < 0.f)
 					resetBaryToZero(bary, i);
@@ -235,8 +242,9 @@ namespace prometheus
 		Eigen::Vector3f q_bary = spt.bary + shift;
 		if (isBaryInside(q_bary)) {
 			spt.bary = q_bary;
+			resetBaryToInside(spt.bary);
 			signalWalkingPoint(spt, shift);
-			return  spt;
+			return spt;
 		}
 
 		// check start point inside triangle
@@ -248,7 +256,7 @@ namespace prometheus
 				resetBaryToInside(spt.bary);
 				shift = q_bary - spt.bary;
 				signalWalkingPoint(spt, shift);
-				return walkSurfacePoint(spt, shift);
+				return walkSurfacePoint(spt, shift * m_options.cross_triangle_decay);
 			}
 		}
 
@@ -313,7 +321,7 @@ namespace prometheus
 		// resolve numerical issue of edge point
 		resetBaryOnEdge(nbr_spt.bary);
 
-		return walkSurfacePoint(nbr_spt, nbr_shift);
+		return walkSurfacePoint(nbr_spt, nbr_shift * m_options.cross_triangle_decay);
 	}
 
 	TriangleWalk::WalkingPoint TriangleWalk::walkToNeighbor(WalkingPoint wpt, Eigen::Vector2i nbr_edge)

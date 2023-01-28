@@ -9,6 +9,13 @@
 
 namespace prometheus
 {
+	struct TriangleWalkOption
+	{
+		// decay the remaining shift when across triangle
+		// to avoid stack overflow
+		double cross_triangle_decay = 0.9;
+	};
+
 	/* Point is given by indexed barycentric (p, v, w)
 	*    p is the index of triangle
 	*    (v, w) is the barycentric coordinates
@@ -59,11 +66,14 @@ namespace prometheus
 		WalkingPoint walkToNeighbor(WalkingPoint wpt, Eigen::Vector2i nbr_edge);
 
 		// helper functions
+		auto& options() { return m_options; }
 		auto& nbr_table() { return m_buffer.nbr_table; }
 		void signalWalkingPoint(SurfacePoint spt, Eigen::Vector3f shift);
 		auto& callback_walking_spt() { return m_callback_walking_spt; }
 
 	private:
+		TriangleWalkOption m_options;
+
 		struct
 		{
 			// F is the triangle mesh faces
