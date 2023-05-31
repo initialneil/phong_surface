@@ -24,7 +24,7 @@ def interpBarycentric(tri_V, spt_vw):
     return (bary[:, None, :] @ tri_V).squeeze(1)
 
 class PhongSurface():
-    def __init__(self, V, F, N, FN=None, TC=None, FTC=None):
+    def __init__(self, V, F, N, FN=None, TC=None, FTC=None, verbose=True):
         """
         PhongSurface based on a triangle mesh.
         - V: vertices
@@ -38,6 +38,7 @@ class PhongSurface():
         self.FN = FN
         self.TC = TC
         self.FTC = FTC
+        self.verbose = verbose
 
         if self.FN is None:
             if self.F is not None and self.N is not None:
@@ -117,7 +118,8 @@ class PhongSurface():
         query_V = torch.from_numpy(V).to(dtype=torch.float)
         query_N = torch.from_numpy(N).to(dtype=torch.float) if N is not None else None
 
-        print('[PhongSurface] update_corres_spt ...', end='')
+        if self.verbose:
+            print('[PhongSurface] update_corres_spt ...', end='')
 
         # outer loop
         alpha = 1.0
@@ -135,7 +137,8 @@ class PhongSurface():
             # decay
             alpha = alpha * 0.5
 
-        print('[done]')
+        if self.verbose:
+            print('[done]')
         return spt_fidx, spt_vw
 
     # solve for update of barycentric coords
@@ -186,11 +189,12 @@ class PhongSurface():
             tri_F = self.FN[spt_fidx, :]
             tri_N = np.stack([self.N[tri_F[:, 0], :], self.N[tri_F[:, 1], :], self.N[tri_F[:, 2], :]], axis=1)
             norms = interpBarycentric(tri_N, spt_vw)
+            return (norms / np.linalg.norm(norms, axis=1)[:, None])
         else:
             tri_F = self.source_FN[spt_fidx, :]
             tri_N = torch.stack([self.source_N[tri_F[:, 0], :], self.source_N[tri_F[:, 1], :], self.source_N[tri_F[:, 2], :]], axis=1)
             norms = interpBarycentric(tri_N, spt_vw)
-        return F.normalize(norms, p=2, dim=-1)
+            return F.normalize(norms, p=2, dim=-1)
 
     # retrieve texture coordinates for surface points
     def retrieve_tc(self, spt_fidx, spt_vw):
