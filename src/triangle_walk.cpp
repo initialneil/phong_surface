@@ -8,6 +8,8 @@
 
 using namespace std;
 
+#define PARALLEL_EPS 1e-7
+
 namespace prometheus
 {
 	template <typename T1, typename T2>
@@ -27,24 +29,60 @@ namespace prometheus
 
 	// https://math.stackexchange.com/a/3996095
 	// line p1-p2 intersect with line p3-p4
-	static void calcLineIntersectBarycentric(const Eigen::Vector3f& p1, const Eigen::Vector3f& p2, 
+	static bool calcLineIntersectBarycentric(const Eigen::Vector3f& p1, const Eigen::Vector3f& p2, 
 		const Eigen::Vector3f& p3, const Eigen::Vector3f& p4,
 		Eigen::Vector2f& t12, Eigen::Vector3f& intersect)
 	{
-		float u1 = p1[0], v1 = p1[1], w1 = p1[2];
-		float u2 = p2[0], v2 = p2[1], w2 = p2[2];
-		float u3 = p3[0], v3 = p3[1], w3 = p3[2];
-		float u4 = p4[0], v4 = p4[1], w4 = p4[2];
+		double u1 = p1[0], v1 = p1[1], w1 = p1[2];
+		double u2 = p2[0], v2 = p2[1], w2 = p2[2];
+		double u3 = p3[0], v3 = p3[1], w3 = p3[2];
+		double u4 = p4[0], v4 = p4[1], w4 = p4[2];
 
-		t12[0] = (u1 * (v4 - v3) + u3 * (v1 - v4) + u4 * (v3 - v1)) / 
-			((u1 - u2) * (v4 - v3) - (u4 - u3) * (v1 - v2));
+		t12[0] = 0;
+		t12[1] = 0;
 
-		t12[1] = (u1 * (v2 - v3) + u2 * (v3 - v1) + u3 * (v1 - v2)) /
-			((u1 - u2) * (v4 - v3) - (u4 - u3) * (v1 - v2));
+		// diff of u is not zero
+		if (abs(u1 - u2) > PARALLEL_EPS && abs(u4 - u3) > PARALLEL_EPS) {
+			if (abs(v1 - v2) > PARALLEL_EPS && abs(v4 - v3) > PARALLEL_EPS) {
+				t12[0] = (u1 * (v4 - v3) + u3 * (v1 - v4) + u4 * (v3 - v1)) /
+					((u1 - u2) * (v4 - v3) - (u4 - u3) * (v1 - v2));
 
-		intersect[0] = u1 + t12[0] * (u2 - u1);
-		intersect[1] = v1 + t12[0] * (v2 - v1);
-		intersect[2] = w1 + t12[0] * (w2 - w1);
+				t12[1] = (u1 * (v2 - v3) + u2 * (v3 - v1) + u3 * (v1 - v2)) /
+					((u1 - u2) * (v4 - v3) - (u4 - u3) * (v1 - v2));
+			}
+			else if (abs(w1 - w2) > PARALLEL_EPS && abs(w4 - w3) > PARALLEL_EPS) {
+				t12[0] = (u1 * (w4 - w3) + u3 * (w1 - w4) + u4 * (w3 - w1)) /
+					((u1 - u2) * (w4 - w3) - (u4 - u3) * (w1 - w2));
+
+				t12[1] = (u1 * (w2 - w3) + u2 * (w3 - w1) + u3 * (w1 - w2)) /
+					((u1 - u2) * (w4 - w3) - (u4 - u3) * (w1 - w2));
+			}
+		}
+		// diff of u is zero
+		else if (abs(v1 - v2) > PARALLEL_EPS && abs(v4 - v3) > PARALLEL_EPS
+			&& abs(w1 - w2) > PARALLEL_EPS && abs(w4 - w3) > PARALLEL_EPS)
+		{
+			t12[0] = (v1 * (w4 - w3) + v3 * (w1 - w4) + v4 * (w3 - w1)) /
+				((v1 - v2) * (w4 - w3) - (v4 - v3) * (w1 - w2));
+
+			t12[1] = (v1 * (w2 - w3) + v2 * (w3 - w1) + v3 * (w1 - w2)) /
+				((v1 - v2) * (w4 - w3) - (v4 - v3) * (w1 - w2));
+		}
+
+		if (t12[0] >= 0 && t12[0] <= 1.0 && t12[1] >= 0 && t12[0] <= 1.0) {
+			intersect[0] = u1 + t12[0] * (u2 - u1);
+			intersect[1] = v1 + t12[0] * (v2 - v1);
+			intersect[2] = w1 + t12[0] * (w2 - w1);
+			return true;
+		}
+		else {
+			t12[0] = 0;
+			t12[1] = 0;
+			intersect[0] = u1;
+			intersect[1] = v1;
+			intersect[2] = w1;
+			return false;
+		}
 	}
 
 	static Eigen::Vector2f readAB(const Eigen::Vector3f& abc)
@@ -287,8 +325,12 @@ namespace prometheus
 
 		Eigen::Vector2f t12;
 		Eigen::Vector3f intersect;
-		calcLineIntersectBarycentric(edge_v0, edge_v1, spt.bary, q_bary,
-			t12, intersect);
+		if (!calcLineIntersectBarycentric(edge_v0, edge_v1, spt.bary, q_bary,
+			t12, intersect))
+		{
+			// parallel line not intersect, stop
+			return spt;
+		}
 
 		// check neighbor exist
 		Eigen::Vector2i nbr_fi = m_buffer.nbr_table[spt.f_idx][edge_idx];

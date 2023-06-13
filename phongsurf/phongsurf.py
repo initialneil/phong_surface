@@ -64,6 +64,16 @@ class PhongSurface():
         self.outer_loop = 4
         self.inner_loop = 50
 
+    def __repr__(self) -> str:
+        return '[PhongSurface] V: %s, F: %s' % (
+            str(self.V.shape[0]) if self.V is not None else 'None',
+            str(self.F.shape[0]) if self.F is not None else 'None'
+        ) + \
+            '\n[PhongSurface] N: %s, FN: %s' % (
+            str(self.N.shape[0]) if self.N is not None else 'None',
+            str(self.FN.shape[0]) if self.FN is not None else 'None'
+        )
+
     # triangle walk for barycentric delta        
     def init_triwalk(self, F):
         self.triwalk = None
@@ -204,15 +214,4 @@ class PhongSurface():
         tri_F = self.FTC[spt_fidx, :]
         tri_TC = np.stack([self.TC[tri_F[:, 0], :], self.TC[tri_F[:, 1], :], self.TC[tri_F[:, 2], :]], axis=1)
         return interpBarycentric(tri_TC, spt_vw)
-
-    def __str__(self) -> str:
-        return '[PhongSurface] V: %s, F: %s' % (
-            str(self.V.shape[0]) if self.V is not None else 'None',
-            str(self.F.shape[0]) if self.F is not None else 'None'
-        ) + \
-            '\n[PhongSurface] N: %s, FN: %s' % (
-            str(self.N.shape[0]) if self.N is not None else 'None',
-            str(self.FN.shape[0]) if self.FN is not None else 'None'
-        )
-
 
